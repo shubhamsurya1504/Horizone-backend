@@ -1,13 +1,12 @@
 runtime: python39
 
-service: backend-service
-entrypoint: gunicorn -k uvicorn.workers.UvicornWorker main:app --timeout 120
+entrypoint: gunicorn -k uvicorn.workers.UvicornWorker backend.main:app --timeout 120
 
 instance_class: F2
 
 env_variables:
-  PINECONE_API_KEY: "${PINECONE_API_KEY}"
-  OPENAI_API_KEY: "${OPENAI_API_KEY}"
+  PINECONE_API_KEY: "pcsk_2ByS83_Rd4pm21uWJ5mWXKjaPRyhJDqLYbr3RVueSu9iJ2W84iXSyXqzrVqpeKM53JCj8S"
+  OPENAI_API_KEY: "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"
 
 handlers:
 - url: /.*
