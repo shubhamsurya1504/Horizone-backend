@@ -37,7 +37,7 @@ if not PINECONE_API_KEY or not OPENAI_API_KEY:
 
 # Initialize Pinecone
 pc = Pinecone(api_key=PINECONE_API_KEY)
-index_name = "pdf-vector-store"
+index_name = "diwakar"
 index = pc.Index(name=index_name)
 
 # Initialize OpenAI model and embeddings
