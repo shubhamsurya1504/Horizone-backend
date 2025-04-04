@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import asyncio
 from typing import AsyncGenerator, List
 import sqlite3
+import numpy as np
 
 # Load environment variables
 load_dotenv()
@@ -31,17 +32,45 @@ app.add_middleware(
 # Load API Keys
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-
+MYINDEX = os.getenv("MYINDEX")
 if not PINECONE_API_KEY or not OPENAI_API_KEY:
     raise ValueError("Ensure PINECONE_API_KEY and OPENAI_API_KEY are set in the environment.")
 
 # Initialize Pinecone
 pc = Pinecone(api_key=PINECONE_API_KEY)
-index_name = "diwakar"
+index_name =  MYINDEX
 index = pc.Index(name=index_name)
 
-# Initialize OpenAI model and embeddings
-embedding_model = OpenAIEmbeddings(api_key=OPENAI_API_KEY)
+# Function to resize embeddings to match Pinecone index dimensions
+def resize_embedding(embedding, target_size=1024):
+    """Resize embedding to target size"""
+    if len(embedding) == target_size:
+        return embedding
+    
+    # Convert to numpy array
+    embedding_array = np.array(embedding)
+    
+    if len(embedding) > target_size:
+        # Downsample (take first target_size elements)
+        return embedding_array[:target_size].tolist()
+    else:
+        # Upsample (pad with zeros)
+        padded = np.zeros(target_size)
+        padded[:len(embedding)] = embedding_array
+        return padded.tolist()
+
+# Initialize OpenAI model and custom embeddings
+class ResizedOpenAIEmbeddings(OpenAIEmbeddings):
+    def embed_documents(self, texts):
+        embeddings = super().embed_documents(texts)
+        return [resize_embedding(emb) for emb in embeddings]
+
+    def embed_query(self, text):
+        embedding = super().embed_query(text)
+        return resize_embedding(embedding)
+
+# Initialize models with dimension handling
+embedding_model = ResizedOpenAIEmbeddings(api_key=OPENAI_API_KEY)
 llm = OpenAI(temperature=0,api_key=OPENAI_API_KEY)
 
 # Create custom prompt template
@@ -57,7 +86,7 @@ You are an AI assistant specialized in Horizon Europe grant writing, focusing on
 
 ### **Proposal Structure & Requirements:**
 #### **1. Excellence**  
-- Clearly define the project’s **objectives and ambition**.  
+- Clearly define the project's **objectives and ambition**.  
 - Address **state-of-the-art research, gaps, and innovation potential**.  
 - Outline the **methodology**, including interdisciplinary, SSH, gender, and Open Science aspects.  
 - Define the **TRL level** and explain how the project advances technological readiness.  
@@ -70,7 +99,7 @@ You are an AI assistant specialized in Horizon Europe grant writing, focusing on
 #### **3. Implementation**  
 - Structure a **work plan** with clear **work packages (WPs), deliverables, milestones, and effort distribution**.  
 - Include **Gantt & PERT charts**, risk management strategies, and consortium capacity details.  
-- Justify the budget and partner roles, ensuring alignment with Horizon Europe’s funding expectations.  
+- Justify the budget and partner roles, ensuring alignment with Horizon Europe's funding expectations.  
 
 ---
 
@@ -120,6 +149,20 @@ class QueryRequest(BaseModel):
 
 async def stream_answer(query: str) -> AsyncGenerator[str, None]:
     """Streams the response in real-time."""
+    print(f"Retrieving context from Pinecone for query: '{query}'")
+    
+    # Get documents from retriever directly to print them
+    retrieved_docs = retriever.get_relevant_documents(query)
+    print(f"Retrieved {len(retrieved_docs)} documents from Pinecone")
+    print("\n===== FULL CONTEXT FROM PINECONE =====\n")
+    for i, doc in enumerate(retrieved_docs):
+        print(f"Document {i+1}:")
+        print(f"Content (FULL):\n{doc.page_content}")
+        if hasattr(doc, 'metadata') and doc.metadata:
+            print(f"Metadata: {doc.metadata}")
+        print("=" * 80)
+    print("\n===== END OF RETRIEVED CONTEXT =====\n")
+    
     response = await asyncio.to_thread(qa_chain.invoke, {"query": query})
     answer = response['result']
 
